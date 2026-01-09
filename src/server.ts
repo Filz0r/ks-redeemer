@@ -1,8 +1,11 @@
 import { makeKSApiRequest } from './utils/ks-api';
 import { exec } from 'child_process';
 import { getAsset } from './embedded-assets';
+import packageJson from '../package.json';
 
 const PORT = 3000;
+const VERSION = packageJson.version;
+const GITHUB_REPO = 'Filz0r/ks-redeemer';
 
 function openBrowser(url: string) {
 	const commands: Record<string, string> = {
@@ -50,6 +53,13 @@ const server = Bun.serve({
 					{ status: 500 }
 				);
 			}
+		}
+
+		if (path === '/api/version' && req.method === 'GET') {
+			return Response.json({
+				version: VERSION,
+				repo: GITHUB_REPO,
+			});
 		}
 
 		if (path === '/api/redeem' && req.method === 'POST') {
