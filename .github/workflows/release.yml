@@ -1,0 +1,171 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from package.json
+        id: check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Check if release already exists
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/v$VERSION")
+
+          if [ "$HTTP_STATUS" = "404" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "Release v$VERSION does not exist, will create"
+          else
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "Release v$VERSION already exists, skipping"
+          fi
+
+  build:
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build client and embed assets
+        run: bun run build:server
+
+      - name: Build Linux binary
+        run: bun build src/server.ts --compile --target=bun-linux-x64 --outfile=releases/ks-redeemer-linux
+
+      - name: Build Windows binary
+        run: bun build src/server.ts --compile --target=bun-windows-x64 --outfile=releases/ks-redeemer-windows.exe
+
+      - name: Build macOS binary
+        run: bun build src/server.ts --compile --target=bun-darwin-x64 --outfile=releases/ks-redeemer-macos
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: releases/
+
+  release:
+    needs: [check-version, build]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: releases/
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag (if any)
+          PREV_TAG=$(git tag --sort=-version:refname | head -n 1)
+
+          if [ -z "$PREV_TAG" ]; then
+            # First release - get all commits
+            COMMITS=$(git log --pretty=format:"%s|%h" --reverse)
+          else
+            # Get commits since last tag
+            COMMITS=$(git log ${PREV_TAG}..HEAD --pretty=format:"%s|%h" --reverse)
+          fi
+
+          # Initialize sections
+          FEAT=""
+          FIX=""
+          DOCS=""
+          STYLE=""
+          REFACTOR=""
+          PERF=""
+          TEST=""
+          BUILD=""
+          CI=""
+          CHORE=""
+          REVERT=""
+          OTHER=""
+
+          # Parse commits
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            MSG=$(echo "$line" | cut -d'|' -f1)
+            HASH=$(echo "$line" | cut -d'|' -f2)
+
+            # Extract type and description
+            if [[ "$MSG" =~ ^([a-z]+)(\(.+\))?!?:\ (.+)$ ]]; then
+              TYPE="${BASH_REMATCH[1]}"
+              DESC="${BASH_REMATCH[3]}"
+
+              case "$TYPE" in
+                feat)     FEAT="${FEAT}- ${DESC} (\`${HASH}\`)\n" ;;
+                fix)      FIX="${FIX}- ${DESC} (\`${HASH}\`)\n" ;;
+                docs)     DOCS="${DOCS}- ${DESC} (\`${HASH}\`)\n" ;;
+                style)    STYLE="${STYLE}- ${DESC} (\`${HASH}\`)\n" ;;
+                refactor) REFACTOR="${REFACTOR}- ${DESC} (\`${HASH}\`)\n" ;;
+                perf)     PERF="${PERF}- ${DESC} (\`${HASH}\`)\n" ;;
+                test)     TEST="${TEST}- ${DESC} (\`${HASH}\`)\n" ;;
+                build)    BUILD="${BUILD}- ${DESC} (\`${HASH}\`)\n" ;;
+                ci)       CI="${CI}- ${DESC} (\`${HASH}\`)\n" ;;
+                chore)    CHORE="${CHORE}- ${DESC} (\`${HASH}\`)\n" ;;
+                revert)   REVERT="${REVERT}- ${DESC} (\`${HASH}\`)\n" ;;
+                *)        OTHER="${OTHER}- ${MSG} (\`${HASH}\`)\n" ;;
+              esac
+            else
+              OTHER="${OTHER}- ${MSG} (\`${HASH}\`)\n"
+            fi
+          done <<< "$COMMITS"
+
+          # Build changelog
+          CHANGELOG=""
+          [ -n "$FEAT" ]     && CHANGELOG="${CHANGELOG}### Features\n${FEAT}\n"
+          [ -n "$FIX" ]      && CHANGELOG="${CHANGELOG}### Bug Fixes\n${FIX}\n"
+          [ -n "$PERF" ]     && CHANGELOG="${CHANGELOG}### Performance\n${PERF}\n"
+          [ -n "$REFACTOR" ] && CHANGELOG="${CHANGELOG}### Refactoring\n${REFACTOR}\n"
+          [ -n "$DOCS" ]     && CHANGELOG="${CHANGELOG}### Documentation\n${DOCS}\n"
+          [ -n "$BUILD" ]    && CHANGELOG="${CHANGELOG}### Build\n${BUILD}\n"
+          [ -n "$CI" ]       && CHANGELOG="${CHANGELOG}### CI\n${CI}\n"
+          [ -n "$TEST" ]     && CHANGELOG="${CHANGELOG}### Tests\n${TEST}\n"
+          [ -n "$STYLE" ]    && CHANGELOG="${CHANGELOG}### Style\n${STYLE}\n"
+          [ -n "$CHORE" ]    && CHANGELOG="${CHANGELOG}### Chores\n${CHORE}\n"
+          [ -n "$REVERT" ]   && CHANGELOG="${CHANGELOG}### Reverts\n${REVERT}\n"
+          [ -n "$OTHER" ]    && CHANGELOG="${CHANGELOG}### Other\n${OTHER}\n"
+
+          # Write to file (handles multiline)
+          echo -e "$CHANGELOG" > changelog.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: Release v${{ needs.check-version.outputs.version }}
+          body_path: changelog.md
+          files: |
+            releases/ks-redeemer-linux
+            releases/ks-redeemer-windows.exe
+            releases/ks-redeemer-macos

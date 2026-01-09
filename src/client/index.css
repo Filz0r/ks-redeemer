@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+/*
+ * Fluid typography - scales UI based on viewport width
+ * Uses clamp() to set min/preferred/max bounds
+ * Since Tailwind uses rem, this scales everything proportionally
+ */
+html {
+	/* Scales from 16px (1rem) at 1200px viewport to 20px at 2800px viewport */
+	/* Capped at 22px max to prevent being too large on ultrawide */
+	font-size: clamp(1rem, 0.875rem + 0.25vw, 1.375rem);
+}

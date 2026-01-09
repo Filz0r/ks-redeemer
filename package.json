@@ -1,0 +1,38 @@
+{
+  "name": "ks-redeemer",
+  "version": "1.0",
+  "description": "KingShot Gift Code Redeemer - Redeem gift codes for multiple users",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"bun run dev:server\" \"bun run dev:client\"",
+    "dev:server": "DEV=true bun run --watch src/server.ts",
+    "dev:client": "vite",
+    "build:client": "vite build",
+    "embed-assets": "bun run scripts/embed-assets.ts",
+    "build:server": "bun run build:client && bun run embed-assets",
+    "build:linux": "bun run build:server && bun build src/server.ts --compile --target=bun-linux-x64 --outfile=releases/ks-redeemer-linux",
+    "build:windows": "bun run build:server && bun build src/server.ts --compile --target=bun-windows-x64 --outfile=releases/ks-redeemer-windows.exe",
+    "build:macos": "bun run build:server && bun build src/server.ts --compile --target=bun-darwin-x64 --outfile=releases/ks-redeemer-macos",
+    "build:all": "bun run build:server && bun run build:linux && bun run build:windows && bun run build:macos"
+  },
+  "dependencies": {
+    "crypto-js": "^4.2.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/bun": "^1.3.5",
+    "@types/crypto-js": "^4.2.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "autoprefixer": "^10.4.23",
+    "concurrently": "^9.2.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.5.3",
+    "vite": "^7.3.1"
+  },
+  "private": true
+}
