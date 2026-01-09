@@ -79,13 +79,3 @@ bun run build:macos
 
 Executables will be created in the `releases/` folder.
 
-## Tech Stack
-
-- **Runtime**: Bun
-- **Frontend**: React + Tailwind CSS
-- **Build Tool**: Vite
-- **Packaging**: Bun's built-in compiler
-
-## License
-
-Private project - All rights reserved.
