@@ -22,11 +22,26 @@ function openBrowser(url: string) {
 	}
 }
 
+// let requestCounter = 0;
+
 const server = Bun.serve({
 	port: PORT,
+	error(error) {
+		console.error('Bun server error:', error);
+		return Response.json(
+			{ success: false, error: `Server error: ${error.message}` },
+			{ status: 500 }
+		);
+	},
 	async fetch(req) {
+		// requestCounter++;
+		// const reqId = requestCounter;
 		const url = new URL(req.url);
 		const path = url.pathname;
+
+		// if (path.startsWith('/api/')) {
+		// 	console.log(`[REQ #${reqId}] ${req.method} ${path}`);
+		// }
 
 		// API Routes
 		if (path === '/api/login' && req.method === 'POST') {
@@ -41,10 +56,12 @@ const server = Bun.serve({
 					);
 				}
 
+				// console.log(`[REQ #${reqId}] Calling KS API for login...`);
 				const result = await makeKSApiRequest('login', userId);
-				console.log("result", result)
+				// console.log(`[REQ #${reqId}] KS API returned successfully`);
 				return Response.json({ success: true, data: result });
 			} catch (error) {
+				// console.error(`[REQ #${reqId}] ERROR:`, error);
 				return Response.json(
 					{
 						success: false,

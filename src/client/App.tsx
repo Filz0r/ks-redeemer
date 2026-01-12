@@ -75,6 +75,9 @@ async function loginUser(userId: string): Promise<ApiResponse> {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({userId}),
     });
+    if (!response.ok) {
+        return {success: false, error: `Server error: ${response.status}`};
+    }
     return response.json();
 }
 
@@ -84,6 +87,9 @@ async function redeemCode(userId: string, code: string): Promise<ApiResponse> {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({userId, code}),
     });
+    if (!response.ok) {
+        return {success: false, error: `Server error: ${response.status}`};
+    }
     return response.json();
 }
 
@@ -106,6 +112,7 @@ export default function App() {
     }>({current: '', latest: null, repo: '', updateAvailable: false});
 
     const shouldStopRef = useRef(false);
+    const isRunningRef = useRef(false);
 
     // Check version and updates on mount
     useEffect(() => {
@@ -298,9 +305,9 @@ export default function App() {
                     );
                 }
 
-                // Delay between requests
+                // Delay between requests (1s to avoid rate limiting)
                 if (i < userIdList.length - 1 && !shouldStopRef.current) {
-                    await new Promise((resolve) => setTimeout(resolve, 500));
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
                 }
             }
 
@@ -313,6 +320,12 @@ export default function App() {
     );
 
     const handleStart = useCallback(async () => {
+        // Prevent multiple simultaneous runs
+        if (isRunningRef.current) {
+            console.log('Already running, ignoring duplicate start');
+            return;
+        }
+
         const code = giftCode.trim();
         const userIdList = userIds
             .split('\n')
@@ -329,6 +342,7 @@ export default function App() {
             return;
         }
 
+        isRunningRef.current = true;
         setIsRunning(true);
         shouldStopRef.current = false;
         setFeed([]);
@@ -343,6 +357,7 @@ export default function App() {
                 'error'
             );
         } finally {
+            isRunningRef.current = false;
             setIsRunning(false);
         }
     }, [giftCode, userIds, processUsers, addFeedEntry]);
